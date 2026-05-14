@@ -9,7 +9,6 @@ module.exports = router;
 router.post("/vaccine", (req, res) => {
     const {
         child_id,
-        doctor_id,
         vaccine_name,
         dose,
         date_given,
@@ -21,18 +20,16 @@ router.post("/vaccine", (req, res) => {
         `INSERT INTO vaccine (
   id,
   child_id,
-  doctor_id,
   vaccine_name,
   dose,
   date_given,
   next_due_date,
   administered_by,
   created_at)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
             uuidv4(),
             child_id,
-            doctor_id,
             vaccine_name,
             dose,
             date_given,

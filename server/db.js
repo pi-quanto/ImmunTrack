@@ -32,7 +32,6 @@ db.run(`CREATE TABLE IF NOT EXISTS children (
   //vaccine table
   db.run(`CREATE TABLE IF NOT EXISTS vaccine(
        id TEXT PRIMARY KEY,
-       doctor_id TEXT,
   child_id TEXT,
   vaccine_name TEXT,
   dose TEXT,
