@@ -2,13 +2,24 @@ const express = require('express');
 const cors = require('cors');
 
 const app = express();
+app.use(express.json());
+
+const authRoutes = require("./routes/auth");
+const childRoutes = require("./routes/children");
+const vaccineRoutes = require("./routes/vaccine");
+const dashboardRoutes = require("./routes/dashboard");
 
 app.use(cors());
-app.use(express());
+app.use("/auth", authRoutes);
+app.use("/children", childRoutes);
+app.use("/vaccine", vaccineRoutes);
+app.use("/dashboard", dashboardRoutes);
 
 app.get('/', (req,res) =>{
     res.send("Immunization Sync Server Running");
 });
+
+
 
 app.listen(5000, ()=>console.log(`Server running on 5000`)
 );
