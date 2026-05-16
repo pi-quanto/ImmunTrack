@@ -126,10 +126,79 @@ function queueSubtitle(type, payload) {
   return `${payload?.fullName ?? 'Child record'} queued for sync`
 }
 
+/**
+ * Normalizes a string for comparison by removing extra spaces and converting to lowercase.
+ */
+function normalizeName(name) {
+  return name ? name.toLowerCase().replace(/\s+/g, ' ').trim() : ''
+}
+
+/**
+ * Smart deduplication logic: Checks if a child is already registered.
+ * We look for:
+ * 1. Exact Health ID match (definitive)
+ * 2. Exact Name + DOB match (identity)
+ * 3. Phone match + similar name (contact match)
+ */
+export async function findExistingChild({ healthId, fullName, phone, dob }) {
+  // 1. Strict check: Health ID
+  if (healthId) {
+    const match = await db.children.where('healthId').equals(healthId).first()
+    if (match) return { type: 'healthId', record: match }
+  }
+
+  // 2. Identity check: Name and Date of Birth
+  // This helps catch children without a Health ID yet
+  const normalizedInputName = normalizeName(fullName)
+  const identityMatch = await db.children
+    .where('dateOfBirth')
+    .equals(dob)
+    .filter(child => normalizeName(child.fullName) === normalizedInputName)
+    .first()
+
+  if (identityMatch) return { type: 'identity', record: identityMatch }
+
+  // 3. Contact check: Phone number
+  // If the phone number is the same, we check if the name is a partial match
+  // (e.g., "John Doe" vs "John") to avoid flagging siblings as duplicates
+  if (phone && phone.trim().length > 5) {
+    const contactMatch = await db.children.where('phone').equals(phone.trim()).first()
+    if (contactMatch) {
+      const existingName = normalizeName(contactMatch.fullName)
+      if (existingName.includes(normalizedInputName) || normalizedInputName.includes(existingName)) {
+        return { type: 'contact', record: contactMatch }
+      }
+    }
+  }
+
+  return null
+}
+
 export async function saveChildRegistration(form, context = {}) {
   const timestamp = now()
   const localId = createLocalId('child')
   const healthId = context.healthId
+
+  // Before saving, let's see if this child already exists (unless we're forcing the save)
+  if (!context.bypassDuplicateCheck) {
+    const existing = await findExistingChild({
+      healthId,
+      fullName: form.fullName,
+      phone: form.phone,
+      dob: form.dob
+    })
+
+    if (existing) {
+      // If we find a duplicate, we return it along with the match type
+      // This allows the UI to decide whether to show a warning or redirect
+      return {
+        id: existing.record.id,
+        ...existing.record,
+        isDuplicate: true,
+        matchType: existing.type
+      }
+    }
+  }
 
   const child = {
     localId,
@@ -163,7 +232,7 @@ export async function saveChildRegistration(form, context = {}) {
     return childId
   })
 
-  return { id, ...child }
+  return { id, ...child, isDuplicate: false }
 }
 
 export async function saveVaccinationRecord({
