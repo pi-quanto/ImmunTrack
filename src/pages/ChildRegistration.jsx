@@ -273,6 +273,89 @@ function SuccessModal({ healthId, onClose }) {
   )
 }
 
+/* ── Duplicate Modal ───────────────────────────────── */
+function DuplicateModal({ match, onCancel, onConfirm }) {
+  const getMatchMessage = () => {
+    switch (match.matchType) {
+      case 'healthId':
+        return `A child with Health ID ${match.healthId} is already registered.`
+      case 'identity':
+        return `A child named "${match.fullName}" with the same date of birth is already in the system.`
+      case 'contact':
+        return `A similar name and phone number match an existing record for "${match.fullName}".`
+      default:
+        return 'A similar record already exists for this child.'
+    }
+  }
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 100,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: '24px',
+      backgroundColor: 'rgba(0,0,0,0.55)',
+      backdropFilter: 'blur(6px)',
+    }}>
+      <div style={{
+        width: '100%', maxWidth: 440, borderRadius: 24,
+        backgroundColor: '#ffffff',
+        boxShadow: '0 24px 60px rgba(0,0,0,0.22)',
+        padding: '32px 28px 28px',
+        textAlign: 'center',
+      }}>
+        <div style={{
+          width: 64, height: 64, borderRadius: '50%',
+          backgroundColor: '#fef2f2', border: '2px solid #fee2e2',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          margin: '0 auto 20px',
+        }}>
+          <Baby size={32} style={{ color: '#ef4444' }} />
+        </div>
+
+        <h2 style={{
+          fontFamily: 'Sora, sans-serif', fontWeight: 800,
+          fontSize: 20, color: '#111827', margin: '0 0 10px 0',
+        }}>
+          Possible Duplicate Found
+        </h2>
+
+        <p style={{ fontSize: 14, color: '#6b7280', lineHeight: 1.6, margin: '0 0 24px 0' }}>
+          {getMatchMessage()} <br />
+          Please verify if this is the same child before creating a new record.
+        </p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <button
+            onClick={onCancel}
+            style={{
+              padding: '14px 0', borderRadius: 14,
+              fontSize: 14, fontWeight: 700, cursor: 'pointer',
+              fontFamily: 'Sora, sans-serif',
+              backgroundColor: '#f9fafb', color: '#374151',
+              border: '1.5px solid #e5e7eb',
+            }}
+          >
+            Cancel and Review
+          </button>
+          <button
+            onClick={onConfirm}
+            style={{
+              padding: '14px 0', borderRadius: 14,
+              fontSize: 14, fontWeight: 700, cursor: 'pointer',
+              fontFamily: 'Sora, sans-serif',
+              backgroundColor: '#ef4444', color: '#ffffff',
+              border: 'none',
+              boxShadow: '0 4px 12px rgba(239,68,68,0.25)',
+            }}
+          >
+            I've checked, it's a different child
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* ── Main Page ─────────────────────────────────────── */
 export default function ChildRegistration() {
   const { user } = useAuth()
@@ -280,9 +363,10 @@ export default function ChildRegistration() {
     fullName: '', dob: '', sex: 'Male',
     guardianName: '', phone: '', village: '',
   })
-  const [loading,      setLoading]      = useState(false)
-  const [successModal, setSuccessModal] = useState(null)
-  const [errors,       setErrors]       = useState({})
+  const [loading,        setLoading]        = useState(false)
+  const [successModal,   setSuccessModal]   = useState(null)
+  const [duplicateModal, setDuplicateModal] = useState(null)
+  const [errors,         setErrors]         = useState({})
 
   const update = (field) => (e) => {
     setForm((prev) => ({ ...prev, [field]: e.target.value }))
@@ -299,21 +383,36 @@ export default function ChildRegistration() {
     return e
   }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
+  const handleSubmit = async (e, forceSave = false) => {
+    if (e) e.preventDefault()
     const validationErrors = validate()
     if (Object.keys(validationErrors).length > 0) { setErrors(validationErrors); return }
 
     setLoading(true)
     try {
+      // If we are forcing save, we don't want to show the duplicate modal again
+      // We pass a special flag in context or simply bypass the check in the service
+      // For now, our saveChildRegistration always checks. 
+      // We'll update the service slightly to allow a 'force' flag if needed, 
+      // but usually for health records, you'd rather they edit the existing one.
+      
       const healthId = generateHealthId()
-      await saveChildRegistration(form, {
+      const result = await saveChildRegistration(form, {
         healthId,
         clinic: user?.clinic ?? null,
         doctorId: user?.id ?? null,
+        bypassDuplicateCheck: forceSave, // Optional: if we want to allow forced saves
       })
-      setSuccessModal({ healthId })
+
+      if (result.isDuplicate && !forceSave) {
+        setDuplicateModal(result)
+        setLoading(false)
+        return
+      }
+
+      setSuccessModal({ healthId: result.healthId })
       setForm({ fullName: '', dob: '', sex: 'Male', guardianName: '', phone: '', village: '' })
+      setDuplicateModal(null)
     } catch (err) {
       console.error('Save failed:', err)
     } finally {
@@ -513,6 +612,14 @@ export default function ChildRegistration() {
         <SuccessModal
           healthId={successModal.healthId}
           onClose={() => setSuccessModal(null)}
+        />
+      )}
+
+      {duplicateModal && (
+        <DuplicateModal
+          match={duplicateModal}
+          onCancel={() => setDuplicateModal(null)}
+          onConfirm={() => handleSubmit(null, true)}
         />
       )}
     </div>
